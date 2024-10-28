@@ -16,7 +16,7 @@ class EncoderOutput(ModelOutput):
 class BiEncoderModel(nn.Module):
     def __init__(self,
                  model_name: str = None,
-                 normlized: bool = False,
+                 normlized: bool = True,
                  sentence_pooling_method: str = 'cls',
                  negatives_cross_device: bool = False,
                  temperature: float = 1.0,
@@ -45,7 +45,7 @@ class BiEncoderModel(nn.Module):
 
     def compute_loss(self, scores, target):
         # print(scores, target)
-        return torch.nn.functional.cross_entropy(scores, target)
+        # return torch.nn.functional.cross_entropy(scores, target)
         return self.cross_entropy(scores, target)
 
     def compute_similarity(self, q_reps, p_reps):
@@ -71,8 +71,7 @@ class BiEncoderModel(nn.Module):
             # scores = self.compute_similarity(q_reps, mis_reps) / self.temperature
             scores = self.compute_similarity(q_reps[:, None, :,], mis_reps.view(q_reps.size(0), group_size, -1)).squeeze(1) / self.temperature
             scores = scores.view(q_reps.size(0), -1)
-            target = torch.arange(scores.size(0), device=scores.device, dtype=torch.long)
-            target = target * group_size
+            target = torch.zeros(scores.size(0), device=scores.device, dtype=torch.long)
             loss = self.compute_loss(scores, target)
             
         else:

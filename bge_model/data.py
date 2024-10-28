@@ -1,7 +1,6 @@
 import pandas as pd
 from torch.utils.data import Dataset
-from transformers import DataCollatorWithPadding, PreTrainedTokenizer, AutoTokenizer
-import datasets
+from transformers import DataCollatorWithPadding, PreTrainedTokenizer
 import numpy as np
 import torch
 from dataclasses import dataclass
@@ -30,56 +29,47 @@ class TrainDatasetForEmbedding(Dataset):
         return len(self.categories)
 
     def __getitem__(self, keys):
-        x = self.tokenizer.encode(self.categories[keys], max_length=self.max_len, padding='max_length')
-        y = [self.tokenizer.encode(self.misconception[keys], max_length=self.max_len, padding='max_length')]
-        a = torch.rand(4)
-        a = a*len(self.misconception)
+        x = self.tokenizer(
+            self.categories[keys],
+            max_length=self.max_len,
+            padding='max_length',
+            truncation=True,
+            return_tensors='pt'
+        )
+        y = [self.tokenizer(
+            self.misconception[keys],
+            max_length=self.max_len,
+            padding='max_length',
+            truncation=True,
+            return_tensors='pt'
+        )]
+        a = torch.rand(3) * len(self.misconception)
         a = a.long()
         for i in range(a.shape[0]):
-            y.append(self.tokenizer.encode(self.misconception[a[i]], max_length=self.max_len, padding='max_length'))
+            y.append(self.tokenizer(
+                self.misconception[a[i]],
+                max_length=self.max_len,
+                padding='max_length',
+                truncation=True,
+                return_tensors='pt'
+            ))
         labels = torch.tensor(0, dtype=torch.long)
-        return torch.tensor([x]), torch.tensor(y)
-        # return {
-        #     'input_ids': (torch.tensor([x]), torch.tensor(y)),
-        #     'labels': labels
-        # }
+        return x['input_ids'].squeeze(0), torch.stack([yi['input_ids'].squeeze(0) for yi in y]), labels
 
 @dataclass
 class EmbedCollator(DataCollatorWithPadding):
-    """
-    Wrapper that does conversion from List[Tuple[encode_qry, encode_psg]] to List[qry], List[psg]
-    and pass batch separately to the actual collator.
-    Abstract out data detail for the model.
-    """
     query_max_len: int = 32
     passage_max_len: int = 128
 
     def __call__(self, features):
         query = [f[0] for f in features]
         passage = [f[1] for f in features]
-        # print(passage)
-        query = torch.tensor(query[0])
-        passage = torch.tensor(passage[0])
-        # print(f'query: {query}')
-        # print(len(features))
-        # if isinstance(query[0], list):
-        #     query = sum(query, [])
-        # if isinstance(passage[0], list):
-        #     passage = sum(passage, [])
+        query = torch.stack(query)
+        passage = torch.cat(passage,dim=0)
 
-        # q_collated = self.tokenizer(
-        #     query,
-        #     padding=True,
-        #     truncation=True,
-        #     max_length=self.query_max_len,
-        #     return_tensors="pt",
-        # )
-        # d_collated = self.tokenizer(
-        #     passage,
-        #     padding=True,
-        #     truncation=True,
-        #     max_length=self.passage_max_len,
-        #     return_tensors="pt",
-        # )
-        return {"query": query, "misconceptions": passage}
-
+        return {
+            "query": query,
+            "misconceptions": passage,
+            # "query_attention_mask": (query != 0).long(),
+            # "passage_attention_mask": (passage != 0).long()
+        }
